@@ -20,6 +20,11 @@ window > stack:backdrop {
     font-size: 32px;
 }
 
+flowboxchild check {
+   min-width: 40px;
+   min-height: 40px;
+}
+
 /* world */
 
 .clocks-digital-renderer.light.stripe {
@@ -41,6 +46,15 @@ window > stack:backdrop {
 }
 
 /* alarms */
+
+flowboxchild grid.tile {
+    background-color: transparent;
+    background-image: -gtk-gradient(radial,
+                                    center center, 0,
+                                    center bottom, 1.0,
+                                    from(shade(@theme_selected_bg_color,1.2)), to(@theme_selected_bg_color));
+    color: white;
+}
 
 .clocks-digital-renderer.active {
     background-color: transparent;

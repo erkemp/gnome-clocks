@@ -740,6 +740,259 @@ public class ContentView : Gtk.Bin {
     }
 }
 
+public class Content2View : Gtk.Bin {
+    public enum Mode {
+        NORMAL,
+        SELECTION
+    }
+
+    public Mode mode {
+        get {
+            return _mode;
+        }
+
+        private set {
+            if (_mode != value) {
+                _mode = value;
+
+                switch (_mode) {
+                case Mode.SELECTION:
+                    header_bar.mode = HeaderBar.Mode.SELECTION;
+                    action_bar.show ();
+                    break;
+                case Mode.NORMAL:
+                    header_bar.mode = HeaderBar.Mode.NORMAL;
+                    action_bar.hide ();
+                    // clear current selection
+                    model.unselect_all ();
+                    break;
+                default:
+                    assert_not_reached ();
+                }
+
+                update_header_bar ();
+            }
+        }
+    }
+
+    private bool can_select {
+        get {
+            return _can_select;
+        }
+
+        private set {
+            if (_can_select != value) {
+                _can_select = value;
+
+                // show the select button only if we are mapped,
+                // since we do not want to show it when the geolocation
+                // query ends, but we are on another page
+                select_button.visible = _can_select && get_mapped ();
+            }
+        }
+    }
+
+    private Mode _mode;
+    private bool _can_select;
+    private ContentStore model;
+    private Gtk.FlowBox flow_box;
+    private Gtk.Button select_button;
+    private Gtk.Button cancel_button;
+    private SelectionMenuButton selection_menubutton;
+    private Gtk.Grid grid;
+    private Gtk.ActionBar action_bar;
+    private Gtk.Button delete_button;
+    private HeaderBar? header_bar;
+
+    construct {
+        flow_box = new Gtk.FlowBox ();
+        flow_box.selection_mode = Gtk.SelectionMode.NONE;
+        flow_box.row_spacing = 12;
+        flow_box.column_spacing = 12;
+        flow_box.margin_top = 12;
+        flow_box.margin_bottom = 12;
+        flow_box.margin_left = 12;
+        flow_box.margin_right = 12;
+
+        flow_box.child_activated.connect ((child) => {
+            var item = model.get_item (child.get_index ()) as ContentItem;
+            if (item != null) {
+                item_activated (item);
+            }
+        });
+
+        var scrolled_window = new Gtk.ScrolledWindow (null, null);
+        scrolled_window.add (flow_box);
+        scrolled_window.hexpand = true;
+        scrolled_window.vexpand = true;
+        scrolled_window.halign = Gtk.Align.FILL;
+        scrolled_window.valign = Gtk.Align.FILL;
+
+        grid = new Gtk.Grid ();
+        grid.attach (scrolled_window, 0, 0, 1, 1);
+
+        action_bar = new Gtk.ActionBar ();
+        action_bar.no_show_all = true;
+        grid.attach (action_bar, 0, 1, 1, 1);
+
+        delete_button = new Gtk.Button ();
+        delete_button.label = _("Delete");
+        delete_button.visible = true;
+        delete_button.sensitive = false;
+        delete_button.halign = Gtk.Align.END;
+        delete_button.hexpand = true;
+        delete_button.clicked.connect (() => {
+            model.delete_selected ();
+            mode = Mode.NORMAL;
+        });
+
+        action_bar.pack_end (delete_button);
+
+        add (grid);
+        grid.show_all ();
+    }
+
+    public signal void item_activated (ContentItem item);
+
+    public delegate Gtk.Widget Content2ViewCreateWidgetFunc (ContentItem item);
+
+    public void bind_model (ContentStore store, owned Content2ViewCreateWidgetFunc create_func) {
+        model = store;
+        model.items_changed.connect ((position, removed, added) => {
+            var first_selectable = model.find ((i) => {
+                return i.selectable;
+            });
+
+            can_select = first_selectable != null;
+        });
+
+        model.selection_changed.connect (() => {
+            var n_items = model.get_n_selected ();
+            selection_menubutton.n_items = n_items;
+
+            if (n_items != 0) {
+                delete_button.sensitive = true;
+            } else {
+                delete_button.sensitive = false;
+            }
+        });
+
+        flow_box.bind_model (model, (object) => {
+            var item = (ContentItem) object;
+            var inner = create_func (item);
+
+            // wrap the widget in an event box to handle righ-click
+            var event_box = new Gtk.EventBox ();
+            event_box.add (inner);
+            event_box.button_press_event.connect ((event) => {
+                // On right click, swicth to selection mode automatically
+                if (item.selectable && event.button == Gdk.BUTTON_SECONDARY) {
+                    mode = Mode.SELECTION;
+                }
+
+                if (item.selectable && mode == Mode.SELECTION) {
+                    item.selected = !item.selected;
+                    return true;
+                } else if (event.button == Gdk.BUTTON_PRIMARY) {
+                    item_activated (item);
+                    return true;
+                }
+
+                return false;
+            });
+
+            // wrap the widget in overlay for the selection check box
+            var overlay = new Gtk.Overlay ();
+            overlay.halign = Gtk.Align.START;
+            overlay.valign = Gtk.Align.START;
+            overlay.add (event_box);
+
+            var check = new Gtk.CheckButton ();
+            check.no_show_all = true;
+            check.halign = Gtk.Align.END;
+            check.valign = Gtk.Align.END;
+            check.margin_bottom = 8;
+            check.margin_end = 8;
+
+            item.bind_property ("selected", check, "active", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE | BindingFlags.BIDIRECTIONAL);
+            item.bind_property ("selectable", check, "visible", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE,
+                                 (binding, selectable, ref visible) => {
+                visible = this.mode == Mode.SELECTION && (item).selectable;
+                return true;
+            });
+
+            bind_property ("mode", check, "visible", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE,
+                           (binding, mode, ref visible) => {
+                visible = mode == Mode.SELECTION && (item).selectable;
+                return true;
+            });
+
+            overlay.add_overlay (check);
+
+            // manually wrap in flowboxchild ourselves since we want to set alignment
+            var flow_box_child = new Gtk.FlowBoxChild ();
+            flow_box_child.halign = Gtk.Align.START;
+            flow_box_child.valign = Gtk.Align.START;
+            flow_box_child.add (overlay);
+
+            return flow_box_child;
+        });
+    }
+
+    public void select_all () {
+        mode = Mode.SELECTION;
+        model.select_all ();
+    }
+
+    public void unselect_all () {
+        model.unselect_all ();
+    }
+
+    public bool escape_pressed () {
+        if (mode == Mode.SELECTION) {
+            mode = Mode.NORMAL;
+            return true;
+        }
+        return false;
+    }
+
+    public void set_header_bar (HeaderBar bar) {
+        header_bar = bar;
+
+        select_button = new Gtk.Button ();
+        var select_button_image = new Gtk.Image.from_icon_name ("object-select-symbolic", Gtk.IconSize.MENU);
+        select_button.set_image (select_button_image);
+        select_button.valign = Gtk.Align.CENTER;
+        select_button.no_show_all = true;
+        select_button.clicked.connect (() => {
+            mode = Mode.SELECTION;
+        });
+        header_bar.pack_end (select_button);
+
+        cancel_button = new Gtk.Button.with_label (_("Cancel"));
+        cancel_button.no_show_all = true;
+        cancel_button.valign = Gtk.Align.CENTER;
+        cancel_button.clicked.connect (() => {
+            mode = Mode.NORMAL;
+        });
+        header_bar.pack_end (cancel_button);
+
+        selection_menubutton = new SelectionMenuButton ();
+    }
+
+    public void update_header_bar () {
+        switch (header_bar.mode) {
+        case HeaderBar.Mode.SELECTION:
+            header_bar.custom_title = selection_menubutton;
+            cancel_button.show ();
+            break;
+        case HeaderBar.Mode.NORMAL:
+            select_button.visible = can_select;
+            break;
+        }
+    }
+}
+
 public class AmPmToggleButton : Gtk.Button {
     public enum AmPm {
         AM,

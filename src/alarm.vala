@@ -286,6 +286,23 @@ private class Item : Object, ContentItem {
     }
 }
 
+[GtkTemplate (ui = "/org/gnome/clocks/ui/alarmtile.ui")]
+private class Tile : Gtk.Grid {
+    public Item alarm { get; construct set; }
+
+    [GtkChild]
+    private Gtk.Widget name_label;
+    [GtkChild]
+    private Gtk.Widget time_label;
+
+    public Tile (Item alarm) {
+        Object (alarm: alarm);
+
+        alarm.bind_property ("name", name_label, "label", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE);
+        alarm.bind_property ("time-label", time_label, "label", BindingFlags.DEFAULT | BindingFlags.SYNC_CREATE);
+    }
+}
+
 [GtkTemplate (ui = "/org/gnome/clocks/ui/alarmsetupdialog.ui")]
 private class SetupDialog : Gtk.Dialog {
     private Utils.WallClock.Format format;
@@ -529,7 +546,7 @@ public class Face : Gtk.Stack, Clocks.Clock {
     [GtkChild]
     private Gtk.Widget empty_view;
     [GtkChild]
-    private ContentView content_view;
+    private Content2View content_view;
     [GtkChild]
     private RingingPanel ringing_panel;
 
@@ -569,7 +586,10 @@ public class Face : Gtk.Stack, Clocks.Clock {
         new_button.action_name = "win.new";
         header_bar.pack_start (new_button);
 
-        content_view.bind_model (alarms);
+        content_view.bind_model (alarms, (item) => {
+            return new Tile ((Item)item);
+        });
+
         content_view.set_header_bar (header_bar);
 
         load ();

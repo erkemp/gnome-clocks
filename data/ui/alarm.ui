@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <!-- interface-requires gtk+ 3.6 -->
+  <requires lib="gtk+" version="3.18"/>
   <template class="ClocksAlarmFace" parent="GtkStack">
     <property name="visible">True</property>
+    <property name="can_focus">False</property>
     <signal name="notify::visible-child" handler="visible_child_changed" swapped="no"/>
     <child>
       <object class="GtkGrid" id="empty_view">
@@ -42,7 +43,7 @@
       </object>
     </child>
     <child>
-      <object class="ClocksContentView" id="content_view">
+      <object class="ClocksContent2View" id="content_view">
         <property name="visible">True</property>
         <signal name="item-activated" handler="item_activated" swapped="no"/>
       </object>
